@@ -1,10 +1,13 @@
 package main
 
 import (
-	"log"
+	"context"
 	"os"
+	"os/signal"
+	"syscall"
 
 	_ "github.com/lib/pq"
+	"github.com/sirupsen/logrus"
 
 	"github.com/encountea/todo-app"
 	"github.com/encountea/todo-app/pkg/handler"
@@ -14,25 +17,39 @@ import (
 	"github.com/spf13/viper"
 )
 
+// @title Todo App API
+// @version 1.0
+// @description API Server for Todo List App
+
+// @host localhost:8000
+// @BasePath /
+
+// @securityDefinitions.apikey ApiKeyAuth
+// @in header
+// @name Authorization
+
+
 func main() {
+	logrus.SetFormatter(new(logrus.JSONFormatter))
+	
 	if err := initConfig(); err != nil {
-		log.Fatalf("Could not initialize config: %s", err.Error())
+		logrus.Fatalf("Could not initialize config: %s", err.Error())
 	}
 
 	if err := godotenv.Load(); err != nil {
-		log.Fatalf("Failed to load env: %s", err.Error())
+		logrus.Fatalf("Failed to load env: %s", err.Error())
 	}
 
 	db, err := repository.NewPostgresDB(repository.Config{
 		Host:     viper.GetString("db.host"),
 		Port:     viper.GetString("db.port"),
-		User: viper.GetString("db.user"),
+		User:     viper.GetString("db.user"),
 		Password: os.Getenv("DB_PASSWORD"),
 		DBName:   viper.GetString("db.dbname"),
 		SSLMode:  viper.GetString("db.sslmode"),
 	})
 	if err != nil {
-		log.Fatalf("Failed to initialize config: %s", err.Error())
+		logrus.Fatalf("Failed to initialize config: %s", err.Error())
 	}
 
 	repos := repository.NewRepository(db)
@@ -40,10 +57,24 @@ func main() {
 	handlers := handler.NewHandler(services)
 
 	app := new(todo.Server)
+	go func() {
+		if err := app.Run(viper.GetString("port"), handlers.InitRoutes()); err != nil {
+			logrus.Fatalf("Error to connect to server: %s", err.Error())
+		}
+	}()
+	logrus.Printf("Server is running at port: %v", viper.GetString("port"))
 
-	log.Printf("Server is running at port: %v", viper.GetString("port"))
-	if err := app.Run(viper.GetString("port"), handlers.InitRoutes()); err != nil {
-		log.Fatalf("Error to connect to server: %s", err.Error())
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
+	<- quit
+
+	logrus.Print("Server Shutting Down")
+	if err := app.Shutdown(context.Background()); err != nil {
+		logrus.Errorf("error occured on app shutting down: %s", err.Error())
+	}
+
+	if err := db.Close(); err != nil {
+		logrus.Errorf("error occured on db connection close: %s", err.Error())
 	}
 }
 

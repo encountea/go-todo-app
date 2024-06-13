@@ -6,13 +6,21 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
+const (
+	userTable       = "users"
+	todoListsTable  = "todo_lists"
+	usersListsTable = "users_lists"
+	todoItemsTable  = "todo_items"
+	listsItemsTable  = "lists_items"
+)
+
 type Config struct {
-	Host string
-	Port string
-	User string
+	Host     string
+	Port     string
+	User     string
 	Password string
-	DBName string
-	SSLMode string
+	DBName   string
+	SSLMode  string
 }
 
 func NewPostgresDB(cfg Config) (*sqlx.DB, error) {
